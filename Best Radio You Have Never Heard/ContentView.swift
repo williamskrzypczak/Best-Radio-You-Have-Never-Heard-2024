@@ -12,13 +12,37 @@ import AVFoundation
 import AVKit
 import Foundation
 
+// Import Foundation types
+@_exported import struct Foundation.UUID
+@_exported import class Foundation.NSObject
+@_exported import protocol Foundation.XMLParserDelegate
+@_exported import class Foundation.XMLParser
+
 //---------------------------------------------------------------]
 //
 // Main Content View attributes and behaviours
 //
 //---------------------------------------------------------------]
 
-// Class definition for RSS parser delegate
+// RSS Model
+struct RSSItem: Identifiable {
+    let id = UUID()
+    var title: String
+    var htmlContent: String
+    var enclosureUrl: String?
+    
+    init(title: String, htmlContent: String, enclosureUrl: String?) {
+        self.title = title
+        // Clean the content by removing "Best Radio You Have Never Heard" and any extra whitespace
+        self.htmlContent = htmlContent
+            .replacingOccurrences(of: "Best Radio You Have Never Heard", with: "")
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.enclosureUrl = enclosureUrl
+    }
+}
+
+// RSS Parser
 class RSSParserDelegate: NSObject, XMLParserDelegate {
     var currentItem: RSSItem?
     var currentElement: String = ""
@@ -60,118 +84,140 @@ class RSSParserDelegate: NSObject, XMLParserDelegate {
     }
 }
 
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-            .environmentObject(FavoritesManager())
+// RSS Service
+class RSSService {
+    static func fetchRSSFeed(completion: @escaping ([RSSItem]?, Error?) -> Void) {
+        guard let url = URL(string: "https://www.bestradioyouhaveneverheard.com/podcasts/index.xml") else {
+            completion(nil, NSError(domain: "RSSService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                completion(nil, error)
+                return
+            }
+            
+            guard let data = data else {
+                completion(nil, NSError(domain: "RSSService", code: -2, userInfo: [NSLocalizedDescriptionKey: "No data received"]))
+                return
+            }
+            
+            let parser = XMLParser(data: data)
+            let rssParserDelegate = RSSParserDelegate()
+            parser.delegate = rssParserDelegate
+            
+            if parser.parse() {
+                completion(rssParserDelegate.items, nil)
+            } else {
+                completion(nil, NSError(domain: "RSSService", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to parse RSS feed"]))
+            }
+        }.resume()
     }
 }
 
-struct RSSItem: Identifiable {
-    let id = UUID()
-    var title: String
-    var htmlContent: String
-    var enclosureUrl: String?
-    var isFavorite: Bool = false
-    
-    init(title: String, htmlContent: String, enclosureUrl: String?) {
-        self.title = title
-        // Clean the content by removing "Best Radio You Have Never Heard" and any extra whitespace
-        self.htmlContent = htmlContent
-            .replacingOccurrences(of: "Best Radio You Have Never Heard", with: "")
-            .replacingOccurrences(of: "  ", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        self.enclosureUrl = enclosureUrl
-    }
-}
-
+// Main Content View
 struct ContentView: View {
-    @EnvironmentObject var favoritesManager: FavoritesManager
-    @State private var loadingItemId: String?
     @State private var items: [RSSItem] = []
     @State private var searchText = ""
-    @State private var playbackPosition: TimeInterval? = nil
-    @State private var selectedItemId: UUID?
-    @State private var showFavoritesOnly = false
+    @State private var isLoading = true
+    @Environment(\.colorScheme) var colorScheme
+    @AppStorage("isDarkMode") private var isDarkMode = false
     
     var filteredItems: [RSSItem] {
-        if showFavoritesOnly {
-            return items.filter { favoritesManager.isFavorite($0.id) }
-        }
         return items
     }
     
     var body: some View {
         NavigationView {
             if #available(iOS 15.0, *) {
-                VStack(spacing: 0) {
-                    // Favorites toggle
-                    HStack {
-                        Spacer()
-                        Toggle("Show Favorites Only", isOn: $showFavoritesOnly)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal)
-                            .background(showFavoritesOnly ? Color.orange.opacity(0.2) : Color.gray.opacity(0.1))
-                            .foregroundColor(.black)
-                            .cornerRadius(10)
-                            .padding(.horizontal)
-                        Spacer()
-                    }
-                    .padding(.vertical, 8)
-                    .background(Color(.systemGroupedBackground))
+                ZStack {
+                    // Background
+                    Color(colorScheme == .dark ? .black : .white)
+                        .ignoresSafeArea()
                     
-                    SearchableListView(items: filteredItems, searchText: $searchText)
+                    VStack(spacing: 0) {
+                        // Custom header
+                        VStack(spacing: 8) {
+                            Text("Best Radio")
+                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .foregroundColor(.orange)
+                            Text("You Have Never Heard")
+                                .font(.system(size: 24, weight: .medium, design: .rounded))
+                                .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
+                        }
+                        .padding(.top, 20)
+                        .padding(.bottom, 10)
+                        
+                        if isLoading {
+                            VStack(spacing: 20) {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                                    .scaleEffect(1.5)
+                                Text("Loading Episodes...")
+                                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                                    .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            SearchableListView(items: filteredItems, searchText: $searchText)
+                        }
+                    }
                 }
                 .onAppear {
-                    fetchRSSFeed()
+                    loadRSSFeed()
+                }
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: {
+                            isDarkMode.toggle()
+                            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                                windowScene.windows.forEach { window in
+                                    window.overrideUserInterfaceStyle = isDarkMode ? .dark : .light
+                                }
+                            }
+                        }) {
+                            Image(systemName: colorScheme == .dark ? "sun.max.fill" : "moon.fill")
+                                .foregroundColor(.orange)
+                                .font(.system(size: 20))
+                        }
+                    }
                 }
             } else {
                 // Fallback for earlier versions
             }
         }
-        .onAppear {
-            favoritesManager.loadFavorites()
-        }
     }
     
-    func fetchRSSFeed() {
-        if let url = URL(string: "https://www.bestradioyouhaveneverheard.com/podcasts/index.xml") {
-            URLSession.shared.dataTask(with: url) { data, _, error in
-                if let data = data {
-                    DispatchQueue.main.async {
-                        self.parseRSS(data: data)
-                        // Update favorite states after loading items
-                        for index in self.items.indices {
-                            self.items[index].isFavorite = self.favoritesManager.isFavorite(self.items[index].id)
-                        }
-                    }
-                } else if let error = error {
-                    print("Error fetching RSS feed: \(error.localizedDescription)")
-                }
-            }.resume()
-        }
-    }
-    
-    func parseRSS(data: Data) {
-        let parser = XMLParser(data: data)
-        let rssParserDelegate = RSSParserDelegate()
-        parser.delegate = rssParserDelegate
-        
-        if parser.parse() {
-            DispatchQueue.main.async {
-                self.items = rssParserDelegate.items
+    private func loadRSSFeed() {
+        RSSService.fetchRSSFeed { fetchedItems, error in
+            if let error = error {
+                print("Error fetching RSS feed: \(error.localizedDescription)")
+                isLoading = false
+                return
             }
-        } else {
-            print("Error parsing RSS feed.")
+            
+            if let fetchedItems = fetchedItems {
+                DispatchQueue.main.async {
+                    self.items = fetchedItems
+                    self.isLoading = false
+                }
+            }
         }
     }
 }
 
+//---------------------------------------------------------------]
+//
+// List View Components
+//
+//---------------------------------------------------------------]
+
 struct SearchableListView: View {
     let items: [RSSItem]
     @Binding var searchText: String
-    @EnvironmentObject var favoritesManager: FavoritesManager
     @State private var selectedItemId: UUID?
+    @Environment(\.colorScheme) var colorScheme
     
     var filteredItems: [RSSItem] {
         if searchText.isEmpty {
@@ -190,30 +236,52 @@ struct SearchableListView: View {
         }
         .searchable(text: $searchText, prompt: "Search episodes...")
         .listStyle(.plain)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.clear)
+        .scrollContentBackground(.hidden)
     }
 }
 
 struct EpisodeRow: View {
     let item: RSSItem
     @Binding var selectedItemId: UUID?
-    @EnvironmentObject var favoritesManager: FavoritesManager
+    @State private var albumArt: UIImage?
+    @State private var isLoadingImage = true
+    @State private var imageLoadTask: Task<Void, Never>?
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         HStack(spacing: 12) {
             // Row image with improved styling
-            Image("RowImage")
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 90, height: 100)
-                .cornerRadius(8)
-                .shadow(radius: 2)
+            if isLoadingImage {
+                Rectangle()
+                    .fill(colorScheme == .dark ? Color.gray.opacity(0.3) : Color.gray.opacity(0.3))
+                    .frame(width: 90, height: 120)
+                    .cornerRadius(12)
+                    .overlay(
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                    )
+            } else if let albumArt = albumArt {
+                Image(uiImage: albumArt)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 90, height: 120)
+                    .cornerRadius(12)
+                    .shadow(radius: 3)
+            } else {
+                Image("RowImage")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 90, height: 120)
+                    .cornerRadius(12)
+                    .shadow(radius: 3)
+            }
             
             VStack(alignment: .leading, spacing: 8) {
                 Text(item.title)
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
-                    .lineLimit(2)
+                    .foregroundColor(colorScheme == .dark ? .white : .primary)
+                    .lineLimit(3)
                 
                 // Progress indicator
                 Rectangle()
@@ -223,34 +291,13 @@ struct EpisodeRow: View {
             }
             
             Spacer()
-            
-            // Favorite button with improved styling
-            Button(action: {
-                withAnimation {
-                    if favoritesManager.isFavorite(item.id) {
-                        favoritesManager.removeFavorite(item.id)
-                    } else {
-                        favoritesManager.addFavorite(item.id)
-                    }
-                }
-            }) {
-                Image(systemName: favoritesManager.isFavorite(item.id) ? "star.fill" : "star")
-                    .foregroundColor(favoritesManager.isFavorite(item.id) ? .orange : .gray)
-                    .imageScale(.large)
-                    .padding(8)
-                    .background(
-                        Circle()
-                            .fill(Color.gray.opacity(0.1))
-                    )
-            }
-            .buttonStyle(PlainButtonStyle())
         }
-        .padding(.vertical, 8)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
+        .padding(.vertical, 12)
+        .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
+        .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
         .overlay(
-            NavigationLink(destination: DetailView(item: item, playbackPosition: .constant(nil))
+            NavigationLink(destination: DetailView(item: item)
                 .onAppear { selectedItemId = item.id }
                 .onDisappear { selectedItemId = nil }
             ) {
@@ -260,13 +307,44 @@ struct EpisodeRow: View {
         )
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .task {
+            if let url = URL(string: item.enclosureUrl!) {
+                imageLoadTask?.cancel()
+                imageLoadTask = Task {
+                    do {
+                        let asset = AVAsset(url: url)
+                        let metadata = try await asset.load(.commonMetadata)
+                        if let artworkData = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierArtwork).first?.dataValue {
+                            await MainActor.run {
+                                albumArt = UIImage(data: artworkData)
+                                isLoadingImage = false
+                            }
+                        } else {
+                            await MainActor.run {
+                                isLoadingImage = false
+                            }
+                        }
+                    } catch {
+                        print("Error loading album art: \(error)")
+                        await MainActor.run {
+                            isLoadingImage = false
+                        }
+                    }
+                }
+            } else {
+                isLoadingImage = false
+            }
+        }
+        .onDisappear {
+            imageLoadTask?.cancel()
+        }
     }
 }
 
 //---------------------------------------------------------------]
 //
-// Detail View attributes and behaviours
+// Detail View Components
 //
 //---------------------------------------------------------------]
 
@@ -305,227 +383,152 @@ private func configureAudioSession() {
     }
 }
 
-func fetchAlbumArt(from url: URL) -> UIImage? {
-    let asset = AVAsset(url: url)
-    let metadata = asset.commonMetadata
-    if let artworkData = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierArtwork).first?.dataValue {
-        return UIImage(data: artworkData)
-    }
-    return nil
-}
-
 struct DetailView: View {
     let item: RSSItem
-    @State private var albumArt: UIImage?
     @State private var audioPlayer: AVPlayer?
     @State private var isPlaying = false
-    @State private var imageData: Data?
     @State private var volume: Float = 0.5
-    @Binding var playbackPosition: TimeInterval?
     @State private var currentTime: Double = 0
     @State private var duration: Double = 0.0
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var sliderValue: Double = 0
-    @State private var lastPlaybackPosition: TimeInterval?
-    @State private var autoPlay = false
+    @Environment(\.colorScheme) var colorScheme
     let rewindInterval: TimeInterval = 15
     let fastForwardInterval: TimeInterval = 15
-    @State private var savePlaybackPosition = UserDefaults.standard.bool(forKey: "savePlaybackPositionEnabled")
-    @State private var isLoadingImage = true
-    @State private var imageLoadTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Background image at the top
-            if isLoadingImage {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(height: 200)
-                    .overlay(
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                    )
-            } else if let albumArt = albumArt {
-                Image(uiImage: albumArt)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: 200)
-                    .clipped()
-            } else {
-                Image("RowImage")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: 200)
-                    .clipped()
-            }
+        ZStack {
+            // Background
+            Color(colorScheme == .dark ? .black : .white)
+                .ignoresSafeArea()
             
-            // Main content
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 24) {
+                    // Logo
+                    Image("RowImage")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 120)
+                        .padding(.top, 60)
+                    
                     // Title and content
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 16) {
                         Text(item.title)
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.black)
-                            .padding(.horizontal)
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(colorScheme == .dark ? .white : .black)
                             .lineLimit(2)
+                            .padding(.horizontal)
                         
                         ScrollView {
                             Text(item.htmlContent.strippingHTML())
-                                .font(.subheadline)
-                                .foregroundColor(.black)
+                                .font(.system(size: 16, weight: .regular, design: .rounded))
+                                .foregroundColor(colorScheme == .dark ? .white : .black)
                                 .padding(.horizontal)
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(10)
+                                .padding(.vertical, 12)
+                                .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
+                                .cornerRadius(16)
+                                .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
                         }
-                        .frame(maxHeight: 150)
+                        .frame(maxHeight: 300)
                         .scrollIndicators(.visible)
                     }
-                    .padding(.vertical, 8)
+                    .padding(.top, 20)
                     
                     // Audio controls
                     if let enclosureUrl = item.enclosureUrl, URL(string: enclosureUrl) != nil {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 20) {
                             // AirPlay button
                             AirPlayButtonView()
                                 .frame(width: 60, height: 60)
-                                .background(Color.orange.opacity(0.2))
-                                .cornerRadius(10)
+                                .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
+                                .cornerRadius(30)
+                                .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
                             
                             // Playback controls
-                            HStack(spacing: 25) {
+                            HStack(spacing: 30) {
                                 Button(action: rewindAudio) {
                                     Image(systemName: "gobackward.\(Int(rewindInterval))")
                                         .imageScale(.large)
-                                        .foregroundColor(.black)
+                                        .foregroundColor(colorScheme == .dark ? .white : .black)
+                                        .frame(width: 44, height: 44)
+                                        .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
+                                        .cornerRadius(22)
+                                        .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                                 }
                                 
                                 Button(action: playOrPauseAudio) {
                                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                                         .imageScale(.large)
-                                        .foregroundColor(.black)
+                                        .foregroundColor(.white)
+                                        .frame(width: 64, height: 64)
+                                        .background(Color.orange)
+                                        .cornerRadius(32)
+                                        .shadow(color: Color.orange.opacity(0.3), radius: 5, x: 0, y: 3)
                                 }
                                 
                                 Button(action: fastForwardAudio) {
                                     Image(systemName: "goforward.\(Int(fastForwardInterval))")
                                         .imageScale(.large)
-                                        .foregroundColor(.black)
+                                        .foregroundColor(colorScheme == .dark ? .white : .black)
+                                        .frame(width: 44, height: 44)
+                                        .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
+                                        .cornerRadius(22)
+                                        .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                                 }
                                 
                                 Button(action: stopAudio) {
                                     Image(systemName: "stop.fill")
                                         .imageScale(.large)
-                                        .foregroundColor(.black)
+                                        .foregroundColor(colorScheme == .dark ? .white : .black)
+                                        .frame(width: 44, height: 44)
+                                        .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
+                                        .cornerRadius(22)
+                                        .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                                 }
                             }
                             .padding(.vertical, 8)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(10)
                             
                             // Progress slider
-                            VStack {
+                            VStack(spacing: 8) {
                                 Slider(value: $currentTime, in: 0...duration, onEditingChanged: sliderEditingChanged)
                                     .accentColor(.orange)
+                                    .padding(.horizontal)
                                 
                                 HStack {
                                     Text(formatTime(currentTime))
-                                        .font(.caption)
-                                        .foregroundColor(.black)
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
                                     Spacer()
                                     Text(formatTime(duration))
-                                        .font(.caption)
-                                        .foregroundColor(.black)
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
                                 }
+                                .padding(.horizontal)
                             }
-                            .padding(.horizontal)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(10)
+                            .padding(.vertical, 12)
+                            .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
                         }
                         .padding(.horizontal)
                     }
-                    
-                    // Settings toggles
-                    VStack(spacing: 8) {
-                        Toggle("Remember Playback Position", isOn: $savePlaybackPosition)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal)
-                            .background(savePlaybackPosition ? Color.orange.opacity(0.2) : Color.gray.opacity(0.3))
-                            .foregroundColor(.black)
-                            .cornerRadius(10)
-                            .onChange(of: savePlaybackPosition) { newValue in
-                                UserDefaults.standard.set(newValue, forKey: "savePlaybackPositionEnabled")
-                            }
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, 48)
                 }
-                .padding(.top, 12)
+                .padding(.horizontal)
             }
         }
-        .background(Color.white)
-        .ignoresSafeArea(edges: .bottom)
+        .background(Color(colorScheme == .dark ? .black : .white))
+        .navigationBarTitleDisplayMode(.inline)
+        .edgesIgnoringSafeArea(.top)
         .task {
-            // Setup audio player first
+            // Setup audio player
             setupAudioPlayer()
-            
-            // Then fetch album art
-            if let url = URL(string: item.enclosureUrl!) {
-                imageLoadTask?.cancel()
-                imageLoadTask = Task {
-                    do {
-                        let asset = AVAsset(url: url)
-                        let metadata = try await asset.load(.commonMetadata)
-                        if let artworkData = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierArtwork).first?.dataValue {
-                            await MainActor.run {
-                                albumArt = UIImage(data: artworkData)
-                                isLoadingImage = false
-                            }
-                        } else {
-                            await MainActor.run {
-                                isLoadingImage = false
-                            }
-                        }
-                    } catch {
-                        print("Error loading album art: \(error)")
-                        await MainActor.run {
-                            isLoadingImage = false
-                        }
-                    }
-                }
-            } else {
-                isLoadingImage = false
-            }
-            
-            // Restore playback position if needed
-            let lastEpisode = UserDefaults.standard.string(forKey: "lastPlayedEpisode")
-            if savePlaybackPosition && lastEpisode == item.title {
-                if let lastPosition = UserDefaults.standard.double(forKey: "lastPlaybackPosition") as TimeInterval? {
-                    playbackPosition = lastPosition
-                    seekToTime(lastPosition)
-                    audioPlayer?.play()
-                    isPlaying = true
-                }
-            }
         }
         .onDisappear {
-            imageLoadTask?.cancel()
-            if savePlaybackPosition {
-                if let currentTime = audioPlayer?.currentTime().seconds {
-                    playbackPosition = currentTime
-                    UserDefaults.standard.set(currentTime, forKey: "lastPlaybackPosition")
-                    UserDefaults.standard.set(item.title, forKey: "lastPlayedEpisode")
-                    playOrPauseAudio()
-                    audioPlayer?.pause()
-                }
-            }
+            audioPlayer?.pause()
         }
         .onReceive(timer) { _ in
             if audioPlayer?.timeControlStatus != .paused {
                 currentTime = audioPlayer?.currentTime().seconds ?? 0
-                if savePlaybackPosition {
-                    UserDefaults.standard.set(currentTime, forKey: "lastPlaybackPosition")
-                }
             }
         }
     }
@@ -540,43 +543,6 @@ struct DetailView: View {
         guard let player = audioPlayer else { return }
         let timeCM = CMTime(seconds: time, preferredTimescale: 1000)
         player.seek(to: timeCM)
-    }
-    
-    private var audioPlayerControls: some View {
-        ZStack {
-            VStack {
-                VStack {
-                    AirPlayButtonView()
-                        .frame(width: 65, height: 65)
-                        .background(Color.black.opacity(0.6))
-                }
-                HStack(spacing: 50) {
-                    Button(action: rewindAudio) {
-                        Image(systemName: "gobackward.\(Int(rewindInterval))")
-                            .imageScale(.large)
-                    }
-                    Button(action: playOrPauseAudio) {
-                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .imageScale(.large)
-                    }
-                    Button(action: fastForwardAudio) {
-                        Image(systemName: "goforward.\(Int(fastForwardInterval))")
-                            .imageScale(.large)
-                    }
-                    Button(action: stopAudio) {
-                        Image(systemName: "stop.fill")
-                            .imageScale(.large)
-                    }
-                }
-                .font(.title)
-                .padding()
-                .background(Color.black.opacity(0.6))
-                Slider(value: $currentTime, in: 0...duration, onEditingChanged: sliderEditingChanged)
-                    .frame(width: 330)
-                    .accentColor(.blue)
-                    .background(Color.black.opacity(0.6))
-            }
-        }
     }
     
     private func sliderEditingChanged(editingStarted: Bool) {
@@ -646,4 +612,56 @@ func fetchAlbumArtAsync(from url: URL) async -> UIImage? {
         return UIImage(data: artworkData)
     }
     return nil
+}
+
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationView {
+            ContentView()
+        }
+    }
+}
+
+struct SearchableListView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationView {
+            SearchableListView(
+                items: [
+                    RSSItem(
+                        title: "Episode 1: The Beginning",
+                        htmlContent: "This is a sample episode description with some content to show how it looks in the preview. We'll talk about interesting topics and share some amazing stories.",
+                        enclosureUrl: "https://example.com/sample1.mp3"
+                    ),
+                    RSSItem(
+                        title: "Episode 2: The Journey Continues",
+                        htmlContent: "Another sample episode with a longer description to demonstrate how the text wraps and how the UI handles different content lengths.",
+                        enclosureUrl: "https://example.com/sample2.mp3"
+                    ),
+                    RSSItem(
+                        title: "Episode 3: The Final Chapter",
+                        htmlContent: "A third sample episode to show how multiple items look in the list. This helps us visualize the spacing and layout of the list items.",
+                        enclosureUrl: "https://example.com/sample3.mp3"
+                    )
+                ],
+                searchText: .constant("")
+            )
+        }
+    }
+}
+
+struct EpisodeRow_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationView {
+            List {
+                EpisodeRow(
+                    item: RSSItem(
+                        title: "Sample Episode with a Long Title That Might Need to Wrap to Multiple Lines",
+                        htmlContent: "This is a sample episode description with some content to show how it looks in the preview. We'll talk about interesting topics and share some amazing stories.",
+                        enclosureUrl: "https://example.com/sample.mp3"
+                    ),
+                    selectedItemId: .constant(nil)
+                )
+            }
+        }
+    }
 }

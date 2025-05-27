@@ -1,96 +1,103 @@
-//
-//  FavoritesView.swift
-//  BRYHNH2
-//
-//  Created by Bill Skrzypczak on 4/24/25.
-//
-
 import SwiftUI
 
 struct FavoritesView: View {
-    @EnvironmentObject var favoritesManager: FavoritesManager
     @State private var items: [RSSItem] = []
+    @State private var searchText = ""
+    @StateObject private var favoritesManager = FavoritesManager()
     
-    var favoriteItems: [RSSItem] {
-        let favs = items.filter { favoritesManager.isFavorite($0.id) }
-        print("Found \(favs.count) favorite items")
-        return favs
+    var filteredItems: [RSSItem] {
+        if searchText.isEmpty {
+            return items
+        }
+        return items.filter { item in
+            let titleMatch = item.title.localizedCaseInsensitiveContains(searchText)
+            let contentMatch = item.htmlContent.localizedCaseInsensitiveContains(searchText)
+            return titleMatch || contentMatch
+        }
     }
     
     var body: some View {
         NavigationView {
-            if favoriteItems.isEmpty {
-                VStack {
-                    Text("No favorites yet")
-                        .font(.title)
-                        .foregroundColor(.gray)
-                    Text("Tap the star icon to add shows to your favorites")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding()
+            if #available(iOS 15.0, *) {
+                VStack(spacing: 0) {
+                    SearchableListView(items: filteredItems, searchText: $searchText, favoritesManager: favoritesManager)
+                }
+                .onAppear {
+                    loadRSSFeed()
                 }
             } else {
-                List(favoriteItems) { item in
-                    NavigationLink(destination: DetailView(item: item, playbackPosition: .constant(nil))) {
-                        VStack(alignment: .leading) {
-                            HStack {
-                                Image("RowImage")
-                                    .resizable()
-                                    .frame(width: 90, height: 100)
-                                
-                                Text(item.title)
-                                    .padding([.top, .bottom], 10)
-                                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                                    .foregroundColor(.white)
-                            }
-                            
-                            Rectangle()
-                                .frame(height: 8)
-                                .foregroundColor(.orange)
-                                .edgesIgnoringSafeArea(.horizontal)
-                        }
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .background(Color.black.edgesIgnoringSafeArea(.all))
-                    .padding(.vertical, -9)
-                    .padding(.horizontal, -9)
-                }
-                .navigationTitle("Favorites")
+                // Fallback for earlier versions
             }
-        }
-        .onAppear {
-            print("FavoritesView appeared")
-            fetchRSSFeed()
         }
     }
     
-    private func fetchRSSFeed() {
-        if let url = URL(string: "https://www.bestradioyouhaveneverheard.com/podcasts/index.xml") {
-            URLSession.shared.dataTask(with: url) { data, _, error in
-                if let data = data {
-                    let parser = XMLParser(data: data)
-                    let delegate = RSSParserDelegate()
-                    parser.delegate = delegate
-                    
-                    if parser.parse() {
-                        DispatchQueue.main.async {
-                            self.items = delegate.items
-                            print("Fetched \(delegate.items.count) items from RSS feed")
-                        }
-                    }
-                } else if let error = error {
-                    print("Error fetching RSS feed: \(error.localizedDescription)")
+    private func loadRSSFeed() {
+        RSSService.fetchRSSFeed { fetchedItems, error in
+            if let error = error {
+                print("Error fetching RSS feed: \(error.localizedDescription)")
+                return
+            }
+            
+            if let fetchedItems = fetchedItems {
+                DispatchQueue.main.async {
+                    self.items = fetchedItems
                 }
-            }.resume()
+            }
         }
     }
 }
 
-// Add preview
 struct FavoritesView_Previews: PreviewProvider {
     static var previews: some View {
         FavoritesView()
-            .environmentObject(FavoritesManager())
+    }
+}
+
+struct FavoritesEpisodeRow: View {
+    let item: RSSItem
+    @Binding var selectedItemId: UUID?
+    let favoritesManager: FavoritesManager
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Row image with improved styling
+            Image("RowImage")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 90, height: 100)
+                .cornerRadius(8)
+                .shadow(radius: 2)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                Text(item.title)
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                
+                // Progress indicator
+                Rectangle()
+                    .frame(height: 4)
+                    .foregroundColor(.orange)
+                    .cornerRadius(2)
+            }
+            
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+        .overlay(
+            NavigationLink(destination: DetailView(item: item, favoritesManager: favoritesManager)
+                .onAppear { selectedItemId = item.id }
+                .onDisappear { selectedItemId = nil }
+            ) {
+                EmptyView()
+            }
+            .opacity(0)
+        )
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
     }
 }

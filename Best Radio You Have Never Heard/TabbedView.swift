@@ -13,34 +13,32 @@
 //
 
 import SwiftUI
+import Foundation
+
+// Import Foundation types
+@_exported import struct Foundation.UUID
+@_exported import class Foundation.NSObject
+@_exported import protocol Foundation.XMLParserDelegate
+@_exported import class Foundation.XMLParser
 
 struct TabbedContentView: View {
-    @StateObject private var favoritesManager = FavoritesManager()
-    
     var body: some View {
         ZStack {
             // Background color black
             Color.black.edgesIgnoringSafeArea(.all)
 
-            // TabView for Show and Favorites
+            // TabView for Shows
             TabView {
                 ContentView()
-                    .environmentObject(favoritesManager)
                     .tabItem {
                         Label("Shows", systemImage: "antenna.radiowaves.left.and.right")
-                    }
-                
-                FavoritesView()
-                    .environmentObject(favoritesManager)
-                    .tabItem {
-                        Label("Favorites", systemImage: "star.fill")
                     }
             }
         }
     }
 }
 
-// Preview with FavoritesManager
+// Preview
 struct TabbedContentView_Previews: PreviewProvider {
     static var previews: some View {
         TabbedContentView()
