@@ -146,8 +146,7 @@ struct ContentView: View {
                                 .font(.system(size: 24, weight: .medium, design: .rounded))
                                 .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
                         }
-                        .padding(.top, 20)
-                        .padding(.bottom, 10)
+                        .padding(.bottom, 4)
                         
                         if isLoading {
                             VStack(spacing: 20) {
