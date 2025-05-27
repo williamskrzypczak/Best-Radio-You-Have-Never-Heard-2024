@@ -11,6 +11,7 @@ import Combine
 import AVFoundation
 import AVKit
 import Foundation
+import os.log
 
 // Import Foundation types
 @_exported import struct Foundation.UUID
@@ -383,16 +384,102 @@ private func configureAudioSession() {
     }
 }
 
+// Audio Player State
+class AudioPlayerState: ObservableObject {
+    @Published private(set) var isPlaying = false
+    @Published private(set) var currentTime: Double = 0
+    @Published private(set) var duration: Double = 0
+    @Published private(set) var volume: Float = 0.5
+    @Published var sliderTime: Double = 0
+    
+    private var player: AVPlayer?
+    private let logger = Logger(subsystem: "com.bestradio", category: "AudioPlayer")
+    private var timeObserver: Any?
+    private var isDragging = false
+    
+    func setupPlayer(url: URL) {
+        // Clean up existing observer if any
+        if let observer = timeObserver {
+            player?.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+        
+        let playerItem = AVPlayerItem(url: url)
+        player = AVPlayer(playerItem: playerItem)
+        player?.volume = volume
+        
+        // Get duration
+        Task {
+            if let durationCMTime = try? await playerItem.asset.load(.duration) {
+                await MainActor.run {
+                    duration = CMTimeGetSeconds(durationCMTime)
+                    logger.debug("Audio duration: \(self.duration)")
+                }
+            }
+        }
+        
+        // Setup time observer
+        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            guard let self = self else { return }
+            let seconds = CMTimeGetSeconds(time)
+            self.currentTime = seconds
+            if !self.isDragging {
+                self.sliderTime = seconds
+            }
+        }
+    }
+    
+    func play() {
+        player?.play()
+        isPlaying = true
+    }
+    
+    func pause() {
+        player?.pause()
+        isPlaying = false
+    }
+    
+    func stop() {
+        player?.pause()
+        player?.seek(to: .zero)
+        isPlaying = false
+        currentTime = 0
+        sliderTime = 0
+    }
+    
+    func seek(to time: Double) {
+        let cmTime = CMTime(seconds: time, preferredTimescale: 1000)
+        player?.seek(to: cmTime)
+        currentTime = time
+        sliderTime = time
+    }
+    
+    func startDragging() {
+        isDragging = true
+    }
+    
+    func stopDragging() {
+        isDragging = false
+        seek(to: sliderTime)
+    }
+    
+    func getCurrentTime() -> Double {
+        return player?.currentTime().seconds ?? 0
+    }
+    
+    deinit {
+        if let observer = timeObserver {
+            player?.removeTimeObserver(observer)
+        }
+    }
+}
+
 struct DetailView: View {
     let item: RSSItem
-    @State private var audioPlayer: AVPlayer?
-    @State private var isPlaying = false
-    @State private var volume: Float = 0.5
-    @State private var currentTime: Double = 0
-    @State private var duration: Double = 0.0
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    @State private var sliderValue: Double = 0
+    @StateObject private var playerState = AudioPlayerState()
     @Environment(\.colorScheme) var colorScheme
+    private let logger = Logger(subsystem: "com.bestradio", category: "DetailView")
     let rewindInterval: TimeInterval = 15
     let fastForwardInterval: TimeInterval = 15
 
@@ -436,7 +523,7 @@ struct DetailView: View {
                     
                     // Audio controls
                     if let enclosureUrl = item.enclosureUrl, URL(string: enclosureUrl) != nil {
-                        VStack(spacing: 20) {
+                        VStack(spacing: 12) {
                             // AirPlay button
                             AirPlayButtonView()
                                 .frame(width: 60, height: 60)
@@ -457,7 +544,7 @@ struct DetailView: View {
                                 }
                                 
                                 Button(action: playOrPauseAudio) {
-                                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                    Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
                                         .imageScale(.large)
                                         .foregroundColor(.white)
                                         .frame(width: 64, height: 64)
@@ -486,26 +573,30 @@ struct DetailView: View {
                                         .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                                 }
                             }
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 4)
                             
                             // Progress slider
                             VStack(spacing: 8) {
-                                Slider(value: $currentTime, in: 0...duration, onEditingChanged: sliderEditingChanged)
-                                    .accentColor(.orange)
-                                    .padding(.horizontal)
+                                CustomSlider(
+                                    value: $playerState.sliderTime,
+                                    range: 0...playerState.duration,
+                                    onDragStart: { playerState.startDragging() },
+                                    onDragEnd: { playerState.stopDragging() }
+                                )
+                                .padding(.horizontal)
                                 
                                 HStack {
-                                    Text(formatTime(currentTime))
+                                    Text(formatTime(playerState.currentTime))
                                         .font(.system(size: 14, weight: .medium, design: .rounded))
                                         .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
                                     Spacer()
-                                    Text(formatTime(duration))
+                                    Text(formatTime(playerState.duration))
                                         .font(.system(size: 14, weight: .medium, design: .rounded))
                                         .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
                                 }
                                 .padding(.horizontal)
                             }
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 8)
                             .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
                             .cornerRadius(16)
                             .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
@@ -519,88 +610,49 @@ struct DetailView: View {
         .background(Color(colorScheme == .dark ? .black : .white))
         .navigationBarTitleDisplayMode(.inline)
         .edgesIgnoringSafeArea(.top)
-        .task {
-            // Setup audio player
+        .onAppear {
+            logger.debug("DetailView: View appeared for item: \(item.id)")
             setupAudioPlayer()
         }
-        .onDisappear {
-            audioPlayer?.pause()
+    }
+    
+    private func setupAudioPlayer() {
+        logger.debug("DetailView: Setting up audio player")
+        configureAudioSession()
+        guard let enclosureUrl = item.enclosureUrl, let url = URL(string: enclosureUrl) else {
+            logger.error("DetailView: Invalid URL")
+            return
         }
-        .onReceive(timer) { _ in
-            if audioPlayer?.timeControlStatus != .paused {
-                currentTime = audioPlayer?.currentTime().seconds ?? 0
-            }
+        
+        playerState.setupPlayer(url: url)
+    }
+    
+    private func playOrPauseAudio() {
+        if playerState.isPlaying {
+            playerState.pause()
+        } else {
+            playerState.play()
         }
+    }
+    
+    private func rewindAudio() {
+        let newTime = max(playerState.currentTime - rewindInterval, 0)
+        playerState.seek(to: newTime)
+    }
+    
+    private func fastForwardAudio() {
+        let newTime = min(playerState.currentTime + fastForwardInterval, playerState.duration)
+        playerState.seek(to: newTime)
+    }
+    
+    private func stopAudio() {
+        playerState.stop()
     }
     
     private func formatTime(_ time: Double) -> String {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
-    }
-    
-    private func seekToTime(_ time: TimeInterval) {
-        guard let player = audioPlayer else { return }
-        let timeCM = CMTime(seconds: time, preferredTimescale: 1000)
-        player.seek(to: timeCM)
-    }
-    
-    private func sliderEditingChanged(editingStarted: Bool) {
-        if !editingStarted {
-            seekToTime(currentTime)
-        }
-    }
-    
-    private func setupAudioPlayer() {
-        configureAudioSession()
-        guard let enclosureUrl = item.enclosureUrl, let url = URL(string: enclosureUrl) else {
-            print("Invalid URL")
-            return
-        }
-        let playerItem = AVPlayerItem(url: url)
-        audioPlayer = AVPlayer(playerItem: playerItem)
-        audioPlayer?.volume = Float(volume)
-        if let durationCMTime = audioPlayer?.currentItem?.asset.duration {
-            duration = CMTimeGetSeconds(durationCMTime)
-        }
-    }
-    
-    private func playOrPauseAudio() {
-        guard let player = audioPlayer else { return }
-        if isPlaying {
-            player.pause()
-        } else {
-            player.play()
-        }
-        isPlaying.toggle()
-    }
-    
-    private func rewindAudio() {
-        guard let player = audioPlayer else { return }
-        let playerCurrentTime = CMTimeGetSeconds(player.currentTime())
-        var newTime = playerCurrentTime - rewindInterval
-        newTime = max(newTime, 0)
-        let time: CMTime = CMTimeMake(value: Int64(newTime * 1000), timescale: 1000)
-        player.seek(to: time)
-    }
-    
-    private func fastForwardAudio() {
-        guard let player = audioPlayer else { return }
-        if let duration = player.currentItem?.duration {
-            let playerCurrentTime = CMTimeGetSeconds(player.currentTime())
-            let durationInSeconds = CMTimeGetSeconds(duration)
-            var newTime = playerCurrentTime + fastForwardInterval
-            newTime = min(newTime, durationInSeconds)
-            let time: CMTime = CMTimeMake(value: Int64(newTime * 1000), timescale: 1000)
-            player.seek(to: time)
-        }
-    }
-    
-    private func stopAudio() {
-        audioPlayer?.pause()
-        let time: CMTime = CMTimeMake(value: 0, timescale: 1)
-        audioPlayer?.seek(to: time)
-        isPlaying = false
     }
 }
 
@@ -663,5 +715,51 @@ struct EpisodeRow_Previews: PreviewProvider {
                 )
             }
         }
+    }
+}
+
+// Add this struct before ContentView
+struct CustomSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let onDragStart: () -> Void
+    let onDragEnd: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                // Track
+                Rectangle()
+                    .fill(colorScheme == .dark ? Color.gray.opacity(0.3) : Color.gray.opacity(0.2))
+                    .frame(height: 4)
+                    .cornerRadius(2)
+                
+                // Progress
+                Rectangle()
+                    .fill(Color.orange)
+                    .frame(width: geometry.size.width * CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound)), height: 4)
+                    .cornerRadius(2)
+                
+                // Thumb
+                Circle()
+                    .fill(colorScheme == .dark ? Color.orange : Color.black)
+                    .frame(width: 24, height: 24)
+                    .offset(x: geometry.size.width * CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound)) - 12)
+                    .shadow(radius: 2)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        onDragStart()
+                        let newValue = range.lowerBound + Double(gesture.location.x / geometry.size.width) * (range.upperBound - range.lowerBound)
+                        value = min(max(newValue, range.lowerBound), range.upperBound)
+                    }
+                    .onEnded { _ in
+                        onDragEnd()
+                    }
+            )
+        }
+        .frame(height: 24)
     }
 }

@@ -2,6 +2,43 @@ import Foundation
 import SwiftUI
 import AVKit
 
+// Audio Position Manager
+class AudioPositionManager: ObservableObject {
+    private let positionsKey = "audioPositions"
+    private var positions: [UUID: Double] = [:]
+    
+    init() {
+        loadPositions()
+    }
+    
+    private func loadPositions() {
+        if let data = UserDefaults.standard.data(forKey: positionsKey),
+           let positions = try? JSONDecoder().decode([UUID: Double].self, from: data) {
+            self.positions = positions
+        }
+    }
+    
+    private func savePositions() {
+        if let data = try? JSONEncoder().encode(positions) {
+            UserDefaults.standard.set(data, forKey: positionsKey)
+        }
+    }
+    
+    func getPosition(for id: UUID) -> Double {
+        return positions[id] ?? 0
+    }
+    
+    func savePosition(_ position: Double, for id: UUID) {
+        positions[id] = position
+        savePositions()
+    }
+    
+    func clearPosition(for id: UUID) {
+        positions.removeValue(forKey: id)
+        savePositions()
+    }
+}
+
 // RSS Model
 struct RSSItem: Identifiable {
     let id = UUID()
