@@ -122,7 +122,7 @@ struct ContentView: View {
     @State private var searchText = ""
     @State private var isLoading = true
     @Environment(\.colorScheme) var colorScheme
-    @AppStorage("isDarkMode") private var isDarkMode = false
+    @AppStorage("isDarkMode") private var isDarkMode = true
     
     var filteredItems: [RSSItem] {
         return items
@@ -138,7 +138,7 @@ struct ContentView: View {
                     
                     VStack(spacing: 0) {
                         // Custom header
-                        VStack(spacing: 8) {
+                        VStack(spacing: 2) {
                             Text("Best Radio")
                                 .font(.system(size: 32, weight: .bold, design: .rounded))
                                 .foregroundColor(.orange)
@@ -146,7 +146,7 @@ struct ContentView: View {
                                 .font(.system(size: 24, weight: .medium, design: .rounded))
                                 .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
                         }
-                        .padding(.bottom, 4)
+                        .padding(.bottom, 2)
                         
                         if isLoading {
                             VStack(spacing: 20) {
@@ -162,6 +162,7 @@ struct ContentView: View {
                             SearchableListView(items: filteredItems, searchText: $searchText)
                         }
                     }
+                    .padding(.bottom, 16)
                 }
                 .onAppear {
                     loadRSSFeed()
