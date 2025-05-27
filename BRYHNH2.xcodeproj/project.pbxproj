@@ -15,6 +15,8 @@
 		799AB21A2B3B65B700A94D77 /* Best_Radio_You_Have_Never_HeardUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 799AB2192B3B65B700A94D77 /* Best_Radio_You_Have_Never_HeardUITests.swift */; };
 		799AB21C2B3B65B700A94D77 /* Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 799AB21B2B3B65B700A94D77 /* Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift */; };
 		799AB2292B3B666400A94D77 /* TabbedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 799AB2282B3B666400A94D77 /* TabbedView.swift */; };
+		A06D37002DBABCFE00BCBC79 /* FavoriteManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A06D36FF2DBABCFE00BCBC79 /* FavoriteManager.swift */; };
+		A06D37022DBABD5800BCBC79 /* FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A06D37012DBABD5800BCBC79 /* FavoritesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,6 +49,8 @@
 		799AB21B2B3B65B700A94D77 /* Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		799AB2282B3B666400A94D77 /* TabbedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabbedView.swift; sourceTree = "<group>"; };
 		799AB22C2B3B694C00A94D77 /* Best-Radio-You-Have-Never-Heard-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Best-Radio-You-Have-Never-Heard-Info.plist"; sourceTree = SOURCE_ROOT; };
+		A06D36FF2DBABCFE00BCBC79 /* FavoriteManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteManager.swift; sourceTree = "<group>"; };
+		A06D37012DBABD5800BCBC79 /* FavoritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -77,6 +81,8 @@
 		799AB1F22B3B65B400A94D77 = {
 			isa = PBXGroup;
 			children = (
+				A06D37012DBABD5800BCBC79 /* FavoritesView.swift */,
+				A06D36FF2DBABCFE00BCBC79 /* FavoriteManager.swift */,
 				799AB1FD2B3B65B400A94D77 /* Best Radio You Have Never Heard */,
 				799AB20E2B3B65B600A94D77 /* Best Radio You Have Never HeardTests */,
 				799AB2182B3B65B700A94D77 /* Best Radio You Have Never HeardUITests */,
@@ -262,9 +268,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A06D37022DBABD5800BCBC79 /* FavoritesView.swift in Sources */,
 				799AB2012B3B65B400A94D77 /* ContentView.swift in Sources */,
 				799AB2292B3B666400A94D77 /* TabbedView.swift in Sources */,
 				799AB1FF2B3B65B400A94D77 /* Best_Radio_You_Have_Never_HeardApp.swift in Sources */,
+				A06D37002DBABCFE00BCBC79 /* FavoriteManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
