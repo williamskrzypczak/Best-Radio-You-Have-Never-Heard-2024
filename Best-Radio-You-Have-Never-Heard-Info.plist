@@ -3,8 +3,8 @@
 <plist version="1.0">
 <dict>
 	<key>Allow Arbitrary Loads
-&lt;!DOCTYPE plist PUBLIC &quot;-//Apple//DTD PLIST 1.0//EN&quot; &quot;http://www.apple.com/DTDs/PropertyList-1.0.dtd&quot;&gt;
-&lt;plist version=&quot;1.0&quot;&gt;
+&lt;!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"&gt;
+&lt;plist version="1.0"&gt;
 &lt;true/&gt;
 &lt;/plist&gt;
 App Allows Arbitray Loads</key>
@@ -17,6 +17,8 @@ App Allows Arbitray Loads</key>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>processing</string>
+		<string>fetch</string>
 	</array>
 </dict>
 </plist>

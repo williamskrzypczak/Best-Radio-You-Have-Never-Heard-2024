@@ -12,6 +12,7 @@ import AVFoundation
 import AVKit
 import Foundation
 import os.log
+import MediaPlayer
 
 // Import Foundation types
 @_exported import struct Foundation.UUID
@@ -151,6 +152,8 @@ class RSSParserDelegate: NSObject, XMLParserDelegate {
 
 // RSS Service
 class RSSService {
+    private static var cachedEpisodes: [RSSItem] = []
+    
     static func fetchRSSFeed(completion: @escaping ([RSSItem]?, Error?) -> Void) {
         guard let url = URL(string: "https://www.bestradioyouhaveneverheard.com/podcasts/index.xml") else {
             completion(nil, NSError(domain: "RSSService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
@@ -173,11 +176,16 @@ class RSSService {
             parser.delegate = rssParserDelegate
             
             if parser.parse() {
+                cachedEpisodes = rssParserDelegate.items
                 completion(rssParserDelegate.items, nil)
             } else {
                 completion(nil, NSError(domain: "RSSService", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to parse RSS feed"]))
             }
         }.resume()
+    }
+    
+    static func fetchEpisodesForCarPlay() -> [RSSItem] {
+        return cachedEpisodes
     }
 }
 
@@ -499,8 +507,24 @@ class AudioPlayerState: ObservableObject {
     private let logger = Logger(subsystem: "com.bestradio", category: "AudioPlayer")
     private var timeObserver: Any?
     private var isDragging = false
+    private var currentEpisode: RSSItem?
     
-    func setupPlayer(url: URL) {
+    func setupPlayer(url: URL, episode: RSSItem) {
+        currentEpisode = episode
+        
+        // Configure audio session for CarPlay
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playback, mode: .default, options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+            
+            // Set preferred sample rate and I/O buffer duration
+            try audioSession.setPreferredSampleRate(44100.0)
+            try audioSession.setPreferredIOBufferDuration(0.005)
+        } catch {
+            logger.error("Failed to set audio session category: \(error.localizedDescription)")
+        }
+        
         // Clean up existing observer if any
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
@@ -530,17 +554,124 @@ class AudioPlayerState: ObservableObject {
             if !self.isDragging {
                 self.sliderTime = seconds
             }
+            self.updateNowPlayingInfo()
         }
+        
+        // Set up remote control events
+        setupRemoteTransportControls()
+        
+        // Update Now Playing info immediately
+        updateNowPlayingInfo()
+    }
+    
+    private func setupRemoteTransportControls() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        
+        // Remove existing handlers
+        commandCenter.playCommand.removeTarget(nil)
+        commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.skipForwardCommand.removeTarget(nil)
+        commandCenter.skipBackwardCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+        
+        // Play command
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            self?.play()
+            return .success
+        }
+        
+        // Pause command
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            self?.pause()
+            return .success
+        }
+        
+        // Skip forward command
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let player = self.player,
+                  let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+            
+            let newTime = CMTimeAdd(player.currentTime(), CMTime(seconds: event.interval, preferredTimescale: 1))
+            player.seek(to: newTime)
+            return .success
+        }
+        
+        // Skip backward command
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let player = self.player,
+                  let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+            
+            let newTime = CMTimeSubtract(player.currentTime(), CMTime(seconds: event.interval, preferredTimescale: 1))
+            player.seek(to: newTime)
+            return .success
+        }
+        
+        // Change playback position command
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let player = self.player,
+                  let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            
+            player.seek(to: CMTime(seconds: event.positionTime, preferredTimescale: 1))
+            return .success
+        }
+    }
+    
+    private func updateNowPlayingInfo() {
+        guard let episode = currentEpisode,
+              let player = player,
+              let currentItem = player.currentItem else { return }
+        
+        // Get existing Now Playing info to preserve artwork
+        var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        
+        // Update only the time-related properties
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = player.currentTime().seconds
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player.rate
+        
+        // Only update these properties if they're not already set
+        if nowPlayingInfo[MPMediaItemPropertyTitle] == nil {
+            nowPlayingInfo[MPMediaItemPropertyTitle] = episode.title
+            nowPlayingInfo[MPMediaItemPropertyArtist] = "Best Radio"
+            nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = "Best Radio You Have Never Heard"
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = currentItem.duration.seconds
+            nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+            
+            // Load artwork if not already present
+            if nowPlayingInfo[MPMediaItemPropertyArtwork] == nil {
+                Task {
+                    do {
+                        let metadata = try await currentItem.asset.load(.commonMetadata)
+                        if let artworkData = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierArtwork).first?.dataValue,
+                           let image = UIImage(data: artworkData) {
+                            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                            nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+                            await MainActor.run {
+                                MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+                            }
+                        }
+                    } catch {
+                        logger.error("Failed to load artwork: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+        
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
     
     func play() {
         player?.play()
         isPlaying = true
+        updateNowPlayingInfo()
     }
     
     func pause() {
         player?.pause()
         isPlaying = false
+        updateNowPlayingInfo()
     }
     
     func stop() {
@@ -549,6 +680,7 @@ class AudioPlayerState: ObservableObject {
         isPlaying = false
         currentTime = 0
         sliderTime = 0
+        updateNowPlayingInfo()
     }
     
     func seek(to time: Double) {
@@ -556,6 +688,7 @@ class AudioPlayerState: ObservableObject {
         player?.seek(to: cmTime)
         currentTime = time
         sliderTime = time
+        updateNowPlayingInfo()
     }
     
     func startDragging() {
@@ -599,61 +732,53 @@ struct DetailView: View {
             Color(colorScheme == .dark ? .black : .white)
                 .ignoresSafeArea()
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: 16) {
                     // Logo
                     Image("RowImage")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(height: 120)
+                        .frame(height: 80)
                         .padding(.top, 60)
+                    
                     // Title and content
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text(item.title)
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
                             .foregroundColor(colorScheme == .dark ? .white : .black)
                             .lineLimit(2)
                             .padding(.horizontal)
+                            .padding(.top, 20)
+                        
                         ScrollView {
                             Text(item.htmlContent.strippingHTML())
-                                .font(.system(size: 16, weight: .regular, design: .rounded))
+                                .font(.system(size: 14, weight: .regular, design: .rounded))
                                 .foregroundColor(colorScheme == .dark ? .white : .black)
                                 .padding(.horizontal)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, 8)
                                 .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
-                                .cornerRadius(16)
-                                .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+                                .cornerRadius(12)
+                                .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
                         }
-                        .frame(maxHeight: 200)
+                        .frame(maxHeight: 150)
                         .scrollIndicators(.visible)
                     }
-                    .padding(.top, 12)
+                    .padding(.top, 8)
                     
                     // Save my place toggle and Favorites toggle
                     if let enclosureUrl = item.enclosureUrl, URL(string: enclosureUrl) != nil {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 8) {
                             // Save my place toggle
                             Toggle(isOn: $saveMyPlace) {
                                 Text("Save my place")
-                                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                                    .font(.system(size: 16, weight: .medium, design: .rounded))
                                     .foregroundColor(colorScheme == .dark ? .white : .black)
                             }
                             .toggleStyle(SwitchToggleStyle(tint: .orange))
-                            .padding()
+                            .padding(.vertical, 8)
+                            .padding(.horizontal)
                             .background(colorScheme == .dark ? Color.black.opacity(0.9) : Color.white.opacity(0.8))
-                            .cornerRadius(16)
-                            .shadow(color: Color.black.opacity(1.9), radius: 5, x: 0, y: 2)
-                            .accentColor(colorScheme == .dark ? .white : .black)
-                            .onChange(of: saveMyPlace) { newValue in
-                                guard let episodeID = episodeID else { return }
-                                DispatchQueue.main.async {
-                                    if newValue {
-                                        // Save current position
-                                        PlaybackPositionManager.shared.savePosition(for: episodeID, position: playerState.currentTime)
-                                    } else {
-                                        PlaybackPositionManager.shared.removePosition(for: episodeID)
-                                    }
-                                }
-                            }
+                            .cornerRadius(12)
+                            .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                             
                             // Favorites toggle
                             let isFavorite = episodeID.map { favoritesManager.isFavorite(episodeId: $0) } ?? false
@@ -666,69 +791,69 @@ struct DetailView: View {
                                 }
                             )) {
                                 Text("Add to Favorites")
-                                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                                    .font(.system(size: 16, weight: .medium, design: .rounded))
                                     .foregroundColor(colorScheme == .dark ? .white : .black)
                             }
                             .toggleStyle(SwitchToggleStyle(tint: .orange))
-                            .padding()
+                            .padding(.vertical, 8)
+                            .padding(.horizontal)
                             .background(colorScheme == .dark ? Color.black.opacity(0.9) : Color.white.opacity(0.8))
-                            .cornerRadius(16)
-                            .shadow(color: Color.black.opacity(1.9), radius: 5, x: 0, y: 2)
-                            .accentColor(colorScheme == .dark ? .white : .black)
+                            .cornerRadius(12)
+                            .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                             
                             // AirPlay button
                             AirPlayButtonView()
-                                .frame(width: 60, height: 60)
+                                .frame(width: 50, height: 50)
                                 .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
-                                .cornerRadius(30)
-                                .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+                                .cornerRadius(25)
+                                .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
                             
                             // Playback controls
-                            HStack(spacing: 30) {
+                            HStack(spacing: 20) {
                                 Button(action: rewindAudio) {
                                     Image(systemName: "gobackward.\(Int(rewindInterval))")
                                         .imageScale(.large)
                                         .foregroundColor(colorScheme == .dark ? .white : .black)
-                                        .frame(width: 44, height: 44)
+                                        .frame(width: 40, height: 40)
                                         .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
-                                        .cornerRadius(22)
-                                        .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
+                                        .cornerRadius(20)
+                                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
                                 }
                                 
                                 Button(action: playOrPauseAudio) {
                                     Image(systemName: playerState.isPlaying ? "pause.fill" : "play.fill")
                                         .imageScale(.large)
                                         .foregroundColor(.white)
-                                        .frame(width: 64, height: 64)
+                                        .frame(width: 56, height: 56)
                                         .background(Color.orange)
-                                        .cornerRadius(32)
-                                        .shadow(color: Color.orange.opacity(0.3), radius: 5, x: 0, y: 3)
+                                        .cornerRadius(28)
+                                        .shadow(color: Color.orange.opacity(0.3), radius: 3, x: 0, y: 2)
                                 }
                                 
                                 Button(action: fastForwardAudio) {
                                     Image(systemName: "goforward.\(Int(fastForwardInterval))")
                                         .imageScale(.large)
                                         .foregroundColor(colorScheme == .dark ? .white : .black)
-                                        .frame(width: 44, height: 44)
+                                        .frame(width: 40, height: 40)
                                         .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
-                                        .cornerRadius(22)
-                                        .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
+                                        .cornerRadius(20)
+                                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
                                 }
                                 
                                 Button(action: stopAudio) {
                                     Image(systemName: "stop.fill")
                                         .imageScale(.large)
                                         .foregroundColor(colorScheme == .dark ? .white : .black)
-                                        .frame(width: 44, height: 44)
+                                        .frame(width: 40, height: 40)
                                         .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
-                                        .cornerRadius(22)
-                                        .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 2)
+                                        .cornerRadius(20)
+                                        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
                                 }
                             }
                             .padding(.vertical, 4)
                             
                             // Progress slider
-                            VStack(spacing: 8) {
+                            VStack(spacing: 6) {
                                 CustomSlider(
                                     value: $playerState.sliderTime,
                                     range: 0...playerState.duration,
@@ -739,19 +864,19 @@ struct DetailView: View {
                                 
                                 HStack {
                                     Text(formatTime(playerState.currentTime))
-                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
                                         .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
                                     Spacer()
                                     Text(formatTime(playerState.duration))
-                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
                                         .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
                                 }
                                 .padding(.horizontal)
                             }
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 6)
                             .background(colorScheme == .dark ? Color.black.opacity(0.8) : Color.white.opacity(0.8))
-                            .cornerRadius(16)
-                            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+                            .cornerRadius(12)
+                            .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
                         }
                         .padding(.horizontal)
                     }
@@ -797,7 +922,7 @@ struct DetailView: View {
             return
         }
         
-        playerState.setupPlayer(url: url)
+        playerState.setupPlayer(url: url, episode: item)
     }
     
     private func playOrPauseAudio() {

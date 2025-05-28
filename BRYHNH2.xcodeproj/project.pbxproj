@@ -34,12 +34,15 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		790D885A2DE7C41F008C9041 /* CarPlay.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CarPlay.framework; path = System/Library/Frameworks/CarPlay.framework; sourceTree = SDKROOT; };
+		7916BC522DE7B7E100E04867 /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
 		791CD1642DE6412700327A2A /* StringExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StringExtensions.swift; sourceTree = "<group>"; };
 		791CD1662DE6412700327A2A /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		791CD1682DE6412700327A2A /* AirPlayButtonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPlayButtonView.swift; sourceTree = "<group>"; };
 		791CD1692DE6412700327A2A /* DetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailView.swift; sourceTree = "<group>"; };
 		791CD16A2DE6412700327A2A /* EpisodeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeRow.swift; sourceTree = "<group>"; };
 		791CD16B2DE6412700327A2A /* SearchableListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchableListView.swift; sourceTree = "<group>"; };
+		793C27242DE7C2FA00450812 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		799AB1FB2B3B65B400A94D77 /* BRYHNH2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BRYHNH2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		799AB1FE2B3B65B400A94D77 /* Best_Radio_You_Have_Never_HeardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Best_Radio_You_Have_Never_HeardApp.swift; sourceTree = "<group>"; };
 		799AB2002B3B65B400A94D77 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -52,6 +55,7 @@
 		799AB21B2B3B65B700A94D77 /* Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		799AB22C2B3B694C00A94D77 /* Best-Radio-You-Have-Never-Heard-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Best-Radio-You-Have-Never-Heard-Info.plist"; sourceTree = SOURCE_ROOT; };
 		79ADB6F02DE695790039FFFD /* PlaybackPositionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackPositionManager.swift; sourceTree = "<group>"; };
+		79CD218C2DE7BDCC00885399 /* BRYHNH2Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BRYHNH2Debug.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -79,9 +83,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		790D88592DE7C41F008C9041 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				790D885A2DE7C41F008C9041 /* CarPlay.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		791CD1652DE6412700327A2A /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				7916BC522DE7B7E100E04867 /* FavoritesManager.swift */,
 				79ADB6F02DE695790039FFFD /* PlaybackPositionManager.swift */,
 				791CD1642DE6412700327A2A /* StringExtensions.swift */,
 			);
@@ -113,12 +126,15 @@
 		799AB1F22B3B65B400A94D77 = {
 			isa = PBXGroup;
 			children = (
+				793C27242DE7C2FA00450812 /* SceneDelegate.swift */,
+				79CD218C2DE7BDCC00885399 /* BRYHNH2Debug.entitlements */,
 				791CD1672DE6412700327A2A /* Models */,
 				791CD1652DE6412700327A2A /* Utilities */,
 				791CD16C2DE6412700327A2A /* Views */,
 				799AB1FD2B3B65B400A94D77 /* Best Radio You Have Never Heard */,
 				799AB20E2B3B65B600A94D77 /* Best Radio You Have Never HeardTests */,
 				799AB2182B3B65B700A94D77 /* Best Radio You Have Never HeardUITests */,
+				790D88592DE7C41F008C9041 /* Frameworks */,
 				799AB1FC2B3B65B400A94D77 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -457,14 +473,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BRYHNH2Debug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_ASSET_PATHS = "\"Best Radio You Have Never Heard/Preview Content\"";
 				DEVELOPMENT_TEAM = 6JD548BN3B;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Best-Radio-You-Have-Never-Heard-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = BRYHNH;
+				INFOPLIST_KEY_CFBundleDisplayName = BRYHNH2;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -492,13 +509,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_ASSET_PATHS = "\"Best Radio You Have Never Heard/Preview Content\"";
 				DEVELOPMENT_TEAM = 6JD548BN3B;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Best-Radio-You-Have-Never-Heard-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = BRYHNH;
+				INFOPLIST_KEY_CFBundleDisplayName = BRYHNH2;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
