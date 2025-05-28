@@ -25,6 +25,41 @@ import os.log
 //
 //---------------------------------------------------------------]
 
+// Favorites Manager
+class FavoritesManager: ObservableObject {
+    static let shared = FavoritesManager()
+    private let key = "FavoriteEpisodes"
+    
+    @Published private(set) var favoriteEpisodes: Set<String> = []
+    
+    private init() {
+        loadFavorites()
+    }
+    
+    private func loadFavorites() {
+        if let savedFavorites = UserDefaults.standard.stringArray(forKey: key) {
+            favoriteEpisodes = Set(savedFavorites)
+        }
+    }
+    
+    private func saveFavorites() {
+        UserDefaults.standard.set(Array(favoriteEpisodes), forKey: key)
+    }
+    
+    func toggleFavorite(episodeId: String) {
+        if favoriteEpisodes.contains(episodeId) {
+            favoriteEpisodes.remove(episodeId)
+        } else {
+            favoriteEpisodes.insert(episodeId)
+        }
+        saveFavorites()
+    }
+    
+    func isFavorite(episodeId: String) -> Bool {
+        return favoriteEpisodes.contains(episodeId)
+    }
+}
+
 // Playback Position Manager
 class PlaybackPositionManager {
     static let shared = PlaybackPositionManager()
@@ -151,11 +186,32 @@ struct ContentView: View {
     @State private var items: [RSSItem] = []
     @State private var searchText = ""
     @State private var isLoading = true
+    @State private var showFavoritesOnly = false
     @Environment(\.colorScheme) var colorScheme
     @AppStorage("isDarkMode") private var isDarkMode = true
+    @StateObject private var favoritesManager = FavoritesManager.shared
     
     var filteredItems: [RSSItem] {
-        return items
+        var filtered = items
+        
+        if showFavoritesOnly {
+            filtered = filtered.filter { item in
+                if let episodeId = item.enclosureUrl {
+                    return favoritesManager.isFavorite(episodeId: episodeId)
+                }
+                return false
+            }
+        }
+        
+        if !searchText.isEmpty {
+            filtered = filtered.filter { item in
+                let titleMatch = item.title.localizedCaseInsensitiveContains(searchText)
+                let contentMatch = item.htmlContent.localizedCaseInsensitiveContains(searchText)
+                return titleMatch || contentMatch
+            }
+        }
+        
+        return filtered
     }
     
     var body: some View {
@@ -177,6 +233,19 @@ struct ContentView: View {
                                 .foregroundColor(colorScheme == .dark ? .gray.opacity(0.8) : .gray)
                         }
                         .padding(.bottom, 2)
+                        
+                        // Favorites toggle
+                        Toggle(isOn: $showFavoritesOnly) {
+                            Text("Show Favorites Only")
+                                .font(.system(size: 16, weight: .medium, design: .rounded))
+                                .foregroundColor(colorScheme == .dark ? .white : .black)
+                        }
+                        .toggleStyle(SwitchToggleStyle(tint: .orange))
+                        .padding()
+                        .background(colorScheme == .dark ? Color.black.opacity(0.9) : Color.white.opacity(0.8))
+                        .cornerRadius(16)
+                        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+                        .padding(.horizontal)
                         
                         if isLoading {
                             VStack(spacing: 20) {
@@ -208,7 +277,7 @@ struct ContentView: View {
                             }
                         }) {
                             HStack(spacing: 4) {
-                                Text("Dark Mode")
+                                Text(colorScheme == .dark ? "Light Mode" : "Dark Mode")
                                     .font(.system(size: 16, weight: .medium, design: .rounded))
                                     .foregroundColor(.orange)
                                 Image(systemName: colorScheme == .dark ? "sun.max.fill" : "moon.fill")
@@ -512,6 +581,7 @@ class AudioPlayerState: ObservableObject {
 struct DetailView: View {
     let item: RSSItem
     @StateObject private var playerState = AudioPlayerState()
+    @StateObject private var favoritesManager = FavoritesManager.shared
     @Environment(\.colorScheme) var colorScheme
     private let logger = Logger(subsystem: "com.bestradio", category: "DetailView")
     let rewindInterval: TimeInterval = 15
@@ -558,7 +628,7 @@ struct DetailView: View {
                     }
                     .padding(.top, 12)
                     
-                    // Save my place toggle
+                    // Save my place toggle and Favorites toggle
                     if let enclosureUrl = item.enclosureUrl, URL(string: enclosureUrl) != nil {
                         VStack(spacing: 12) {
                             // Save my place toggle
@@ -584,6 +654,27 @@ struct DetailView: View {
                                     }
                                 }
                             }
+                            
+                            // Favorites toggle
+                            let isFavorite = episodeID.map { favoritesManager.isFavorite(episodeId: $0) } ?? false
+                            Toggle(isOn: Binding(
+                                get: { isFavorite },
+                                set: { newValue in
+                                    if let episodeId = episodeID {
+                                        favoritesManager.toggleFavorite(episodeId: episodeId)
+                                    }
+                                }
+                            )) {
+                                Text("Add to Favorites")
+                                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                                    .foregroundColor(colorScheme == .dark ? .white : .black)
+                            }
+                            .toggleStyle(SwitchToggleStyle(tint: .orange))
+                            .padding()
+                            .background(colorScheme == .dark ? Color.black.opacity(0.9) : Color.white.opacity(0.8))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(1.9), radius: 5, x: 0, y: 2)
+                            .accentColor(colorScheme == .dark ? .white : .black)
                             
                             // AirPlay button
                             AirPlayButtonView()
