@@ -25,6 +25,35 @@ import os.log
 //
 //---------------------------------------------------------------]
 
+// Playback Position Manager
+class PlaybackPositionManager {
+    static let shared = PlaybackPositionManager()
+    private let key = "SavedPlaybackPositions"
+    
+    private init() {}
+    
+    func savePosition(for episodeID: String, position: Double) {
+        var positions = getAllPositions()
+        positions[episodeID] = position
+        UserDefaults.standard.set(positions, forKey: key)
+    }
+    
+    func getPosition(for episodeID: String) -> Double? {
+        let positions = getAllPositions()
+        return positions[episodeID]
+    }
+    
+    func removePosition(for episodeID: String) {
+        var positions = getAllPositions()
+        positions.removeValue(forKey: episodeID)
+        UserDefaults.standard.set(positions, forKey: key)
+    }
+    
+    private func getAllPositions() -> [String: Double] {
+        return UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:]
+    }
+}
+
 // RSS Model
 struct RSSItem: Identifiable {
     let id = UUID()
@@ -482,13 +511,18 @@ struct DetailView: View {
     private let logger = Logger(subsystem: "com.bestradio", category: "DetailView")
     let rewindInterval: TimeInterval = 15
     let fastForwardInterval: TimeInterval = 15
+    @State private var saveMyPlace: Bool = false
+    @State private var hasRestoredPosition: Bool = false
+
+    var episodeID: String? {
+        item.enclosureUrl
+    }
 
     var body: some View {
         ZStack {
             // Background
             Color(colorScheme == .dark ? .black : .white)
                 .ignoresSafeArea()
-            
             ScrollView {
                 VStack(spacing: 24) {
                     // Logo
@@ -497,7 +531,6 @@ struct DetailView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(height: 120)
                         .padding(.top, 60)
-                    
                     // Title and content
                     VStack(alignment: .leading, spacing: 16) {
                         Text(item.title)
@@ -505,7 +538,6 @@ struct DetailView: View {
                             .foregroundColor(colorScheme == .dark ? .white : .black)
                             .lineLimit(2)
                             .padding(.horizontal)
-                        
                         ScrollView {
                             Text(item.htmlContent.strippingHTML())
                                 .font(.system(size: 16, weight: .regular, design: .rounded))
@@ -516,14 +548,38 @@ struct DetailView: View {
                                 .cornerRadius(16)
                                 .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
                         }
-                        .frame(maxHeight: 300)
+                        .frame(maxHeight: 200)
                         .scrollIndicators(.visible)
                     }
-                    .padding(.top, 20)
+                    .padding(.top, 12)
                     
-                    // Audio controls
+                    // Save my place toggle
                     if let enclosureUrl = item.enclosureUrl, URL(string: enclosureUrl) != nil {
                         VStack(spacing: 12) {
+                            // Save my place toggle
+                            Toggle(isOn: $saveMyPlace) {
+                                Text("Save my place")
+                                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                                    .foregroundColor(colorScheme == .dark ? .white : .black)
+                            }
+                            .toggleStyle(SwitchToggleStyle(tint: .orange))
+                            .padding()
+                            .background(colorScheme == .dark ? Color.black.opacity(0.9) : Color.white.opacity(0.8))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(1.9), radius: 5, x: 0, y: 2)
+                            .accentColor(colorScheme == .dark ? .white : .black)
+                            .onChange(of: saveMyPlace) { newValue in
+                                guard let episodeID = episodeID else { return }
+                                DispatchQueue.main.async {
+                                    if newValue {
+                                        // Save current position
+                                        PlaybackPositionManager.shared.savePosition(for: episodeID, position: playerState.currentTime)
+                                    } else {
+                                        PlaybackPositionManager.shared.removePosition(for: episodeID)
+                                    }
+                                }
+                            }
+                            
                             // AirPlay button
                             AirPlayButtonView()
                                 .frame(width: 60, height: 60)
@@ -613,6 +669,27 @@ struct DetailView: View {
         .onAppear {
             logger.debug("DetailView: View appeared for item: \(item.id)")
             setupAudioPlayer()
+            // Restore saved position if exists
+            if let episodeID = episodeID {
+                DispatchQueue.main.async {
+                    if let saved = PlaybackPositionManager.shared.getPosition(for: episodeID) {
+                        saveMyPlace = true
+                        if !hasRestoredPosition {
+                            playerState.seek(to: saved)
+                            hasRestoredPosition = true
+                        }
+                    } else {
+                        saveMyPlace = false
+                    }
+                }
+            }
+        }
+        .onChange(of: playerState.currentTime) { newTime in
+            if saveMyPlace, let episodeID = episodeID {
+                DispatchQueue.main.async {
+                    PlaybackPositionManager.shared.savePosition(for: episodeID, position: newTime)
+                }
+            }
         }
     }
     

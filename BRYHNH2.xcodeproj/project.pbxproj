@@ -51,6 +51,7 @@
 		799AB2192B3B65B700A94D77 /* Best_Radio_You_Have_Never_HeardUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Best_Radio_You_Have_Never_HeardUITests.swift; sourceTree = "<group>"; };
 		799AB21B2B3B65B700A94D77 /* Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		799AB22C2B3B694C00A94D77 /* Best-Radio-You-Have-Never-Heard-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Best-Radio-You-Have-Never-Heard-Info.plist"; sourceTree = SOURCE_ROOT; };
+		79ADB6F02DE695790039FFFD /* PlaybackPositionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackPositionManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -81,6 +82,7 @@
 		791CD1652DE6412700327A2A /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				79ADB6F02DE695790039FFFD /* PlaybackPositionManager.swift */,
 				791CD1642DE6412700327A2A /* StringExtensions.swift */,
 			);
 			name = Utilities;
