@@ -207,9 +207,14 @@ struct ContentView: View {
                                 }
                             }
                         }) {
-                            Image(systemName: colorScheme == .dark ? "sun.max.fill" : "moon.fill")
-                                .foregroundColor(.orange)
-                                .font(.system(size: 20))
+                            HStack(spacing: 4) {
+                                Text("Dark Mode")
+                                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                                    .foregroundColor(.orange)
+                                Image(systemName: colorScheme == .dark ? "sun.max.fill" : "moon.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.system(size: 20))
+                            }
                         }
                     }
                 }
