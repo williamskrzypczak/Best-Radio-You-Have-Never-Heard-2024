@@ -55,6 +55,7 @@
 		799AB21B2B3B65B700A94D77 /* Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Best_Radio_You_Have_Never_HeardUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		799AB22C2B3B694C00A94D77 /* Best-Radio-You-Have-Never-Heard-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Best-Radio-You-Have-Never-Heard-Info.plist"; sourceTree = SOURCE_ROOT; };
 		79ADB6F02DE695790039FFFD /* PlaybackPositionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackPositionManager.swift; sourceTree = "<group>"; };
+		79BF293C2DE7D80200641594 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		79CD218C2DE7BDCC00885399 /* BRYHNH2Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BRYHNH2Debug.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -126,6 +127,7 @@
 		799AB1F22B3B65B400A94D77 = {
 			isa = PBXGroup;
 			children = (
+				79BF293C2DE7D80200641594 /* Info.plist */,
 				793C27242DE7C2FA00450812 /* SceneDelegate.swift */,
 				79CD218C2DE7BDCC00885399 /* BRYHNH2Debug.entitlements */,
 				791CD1672DE6412700327A2A /* Models */,
@@ -482,6 +484,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Best-Radio-You-Have-Never-Heard-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = BRYHNH2;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -491,12 +494,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.BulldogVenturesInc.BRYHNH2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -516,6 +520,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Best-Radio-You-Have-Never-Heard-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = BRYHNH2;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -525,12 +530,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.BulldogVenturesInc.BRYHNH2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
